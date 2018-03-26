@@ -1,11 +1,14 @@
 from pandas import cut
 from gtfspy.util import wgs84_distance
 from gtfspy.gtfs import GTFS
+from math import acos
+from itertools import product
 
 # G = GTFS(path/to/sqlite)
 # I = Inness(G)
 # I.get_rings()
-# I.rings
+# ring = I.rings[5]
+# ring_pairs = I.get_ring_pairs(ring)
 
 class Inness(object):
     def __init__(self, gtfs):
@@ -47,11 +50,38 @@ class Inness(object):
         cuts = cut(dists, number, labels=False)
         self.cuts = cuts
         rings = {}
-        for stop, ring in zip(dists_ie, cuts):
+        for stop, ring in zip(dists_id, cuts):
             try:
                 rings[ring].append(stop[0])
             except:
                 rings[ring] = [stop[0]]
         self.rings = rings
 
+    def angle_from_city_center(self, stop_1, stop_2):
+        """
+        Obtain angle (in rad) generated between two stops with an origin in the city center
+        """
+        lat1, lon1 = self.gtfs.get_stop_coordinates(stop_1)
+        lat2, lon2 = self.gtfs.get_stop_coordinates(stop_2)
+        latc, lonc = self.city_center
+        c = wgs84_distance(lat1, lon1, lat2, lon2)
+        a = wgs84_distance(lat1, lon1, latc, lonc)
+        b = wgs84_distance(lat2, lon2, latc, lonc)
+        cosang = (a**2 + b**2 - c**2)/(2*a*b)
+        return acos(cosang)
+
+    def get_ring_pairs(self, ring, min_deg=0.17):
+        """
+        For a ring (list of stop_I), get pairs of stops that are at least min_deg degrees (.17 rad is 10 deg) from each other.
+        Note that (stop_1, stop_2) != (stop_2, stop_1), since direction is taken into account for public transportation
+        """
+        if type(ring) is int:
+            ring = self.rings[ring]
+        pairs = []
+        for stop_1, stop_2 in product(ring, repeat=2):
+            if stop_1 != stop_2:
+                ang = self.angle_from_city_center(stop_1, stop_2)
+                if ang > min_deg:
+                    pairs.append([(stop_1, stop_2), ang])
+        return pairs
 
