@@ -10,7 +10,7 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         super().__init__(labels, walk_to_target_duration, start_time_dep, end_time_dep, origin_stop)
         self.gtfs = gtfs
         self.rings = None
-        self.city_center = GeoPoint(60.171171, 24.941549)
+        self.city_center = GeoPoint(60.171171, 24.941549) #Defaults to Rautatientori, Helsinki
         self.distance_to_city_center = None
 
     def set_city_center(self, value):
@@ -18,6 +18,11 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         self.city_center = GeoPoint(value[0], value[1])
 
     def get_distance_to_city_center(self):
+        """
+        Get distance from all the bus stops within a 30 km radius to the city center.
+        Output:
+            (city_center): lists with [stop_I, distance_in_km] for each stop within a 30 km radius
+        """
         geo_index = GeoGridIndex(precision=3)
         for lat, lon, ind in zip(self.gtfs.stops().lat, self.gtfs.stops().lon, self.gtfs.stops().stop_I):
             geo_index.add_point(GeoPoint(lat, lon, ref=ind))
@@ -28,9 +33,9 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         """
         Get rings to calculate innes.
         Input:
-            (number): number of rings
+            (number): number of equal length rings
         Output:
-            (self.rings): dictionary with rings (keys) and lists with stop_I's within that ring
+            (rings): dictionary with rings (keys) and lists with stop_I's within that ring
         """
         if not self.distance_to_city_center:
             self.get_distance_to_city_center()
@@ -44,4 +49,5 @@ class JourneyInness(NodeJourneyPathAnalyzer):
             except:
                 rings[ring] = [stop[0]]
         self.rings = rings
+
 
