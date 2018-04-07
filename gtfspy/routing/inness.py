@@ -12,6 +12,11 @@ from itertools import product
 
 class Inness(object):
     def __init__(self, gtfs):
+        """
+        Open an Inness object.
+        Parameters:
+            (gtfs): GTFS object for which the inness will be computed
+        """
         self.gtfs = gtfs
         self.rings = None
         self.city_center = (60.171171, 24.941549) #Rautatientori, Helsinki
@@ -33,7 +38,7 @@ class Inness(object):
             dists.append([ind, wgs84_distance(lat, lon, latc, lonc)/1000.])
         self.distance_to_city_center = dists
 
-    def get_rings(self, number=90, max_distance=30):
+    def get_rings(self, number=60, max_distance=30):
         """
         Get rings to calculate innes.
         Input:
@@ -48,7 +53,6 @@ class Inness(object):
         assert len(dists_id) > 0, "Reset city center - beyond any data point"
         dists = [x[1] for x in dists_id]
         cuts = cut(dists, number, labels=False)
-        self.cuts = cuts
         rings = {}
         for stop, ring in zip(dists_id, cuts):
             try:
@@ -59,7 +63,10 @@ class Inness(object):
 
     def angle_from_city_center(self, stop_1, stop_2):
         """
-        Obtain angle (in rad) generated between two stops with an origin in the city center
+        Obtain angle (in rad) generated between two stops with an origin in the city center.
+        Parameters:
+            (stop_1): stop code
+            (stop_2): stop code
         """
         lat1, lon1 = self.gtfs.get_stop_coordinates(stop_1)
         lat2, lon2 = self.gtfs.get_stop_coordinates(stop_2)
@@ -84,4 +91,17 @@ class Inness(object):
                 if ang > min_deg:
                     pairs.append([(stop_1, stop_2), ang])
         return pairs
+
+    def plot_rings(self):
+        import matplotlib.pyplot as plt
+        if not self.rings:
+            self.get_rings()
+        fig, ax = plt.subplots(1)
+        colors = ['r', 'b', 'k']*int(len(self.rings)/3)
+        for ring, color in zip(self.rings.values(), colors):
+            for stop in ring:
+                lat, lon = self.gtfs.get_stop_coordinates(stop)
+                ax.scatter(lon, lat, c=color)
+        return fig, ax
+
 
