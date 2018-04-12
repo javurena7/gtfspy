@@ -129,26 +129,23 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         and r is the radius of the ring.
         """
         path = self._path_coordinates(path)
-        stop_i = path[0]
-        stop_f = path[len(path)-1]
+        stop_i, stop_f, stop_n = path[0], path[-1], path[1]
         stop_c = stop_i
-        stop_n = path[1]
         inness = 0.0
         n = 1
-        while n < len(path):
+        while stop_n != stop_f:
             corners = [stop_c]
-            while n < len(path):
+            while stop_n != stop_f:
                 print (n)
                 if self.crossed(stop_c, stop_n, stop_i, stop_f):
                     stop_c = self.intersection(stop_c, stop_n, stop_i, stop_f)
                     corners.append(stop_c)
-                    n += 1
                     break
                 corners.append(stop_n)
                 stop_c = stop_n
                 n += 1
                 stop_n = path[n]
-            #TODO check wheter area shoulder be added (outer) or substracted (innir)
+            #TODO check wheter area shoulder be added (outer) or substracted (inner)
             print(self.get_area(corners))
             inness += self.get_area(corners)
         return inness

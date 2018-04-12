@@ -94,6 +94,6 @@ if __name__=="__main__":
     G = GTFS(gtfs_path)
     I = Inness(G)
     I.get_rings()
-    ring = I.rings[5][:40]
+    ring = I.rings[5]
     compute_ring_inness(ring, "test", I)
 
