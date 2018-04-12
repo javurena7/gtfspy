@@ -139,17 +139,19 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         slope, cte = self._get_line_params(stop_int, stop_fnl)
         inness = 0.0
         corners = []
+        distance = 0.0
         for stop_0, stop_1 in zip(path[:-1], path[1:]):
             corners.append(stop_0)
+            distance += wgs84_distance(stop_0[0], stop_0[1], stop_1[0], stop_1[1])
             if self.crossed(stop_int, stop_fnl, stop_0, stop_1):
                 stop_c = self.intersection(stop_int, stop_fnl, stop_0, stop_1)
                 corners.append(stop_c)
                 sign = self._get_inness_path_sign(stop_0, slope, cte)
                 inness += sign * self.get_area(corners)
                 corners = [stop_c]
-
-        distance = wgs84_distance(stop_int[0], stop_int[1], stop_fnl[0], stop_fnl[1])
+        distance = distance/1000
         return inness/(distance**2)
+
 
     def _get_line_params(self, stop_int, stop_fnl):
 
