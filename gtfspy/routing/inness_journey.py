@@ -7,6 +7,10 @@ from gtfspy.util import wgs84_distance
 
 from numpy.random import uniform # while we get a real inness function
 
+# EXAMPLE PATH
+# path = [1929, 1843, 1686, 1563, 1505, 1333, 1179, 1069, 916, 817, 774, 706, 707, 594, 647, 586, 540, 483, 510, 423, 407, 397]
+
+
 class JourneyInness(NodeJourneyPathAnalyzer):
     def __init__(self, labels, walk_to_target_duration, start_time_dep, end_time_dep, origin_stop, gtfs):
         super().__init__(labels, walk_to_target_duration, start_time_dep, end_time_dep, origin_stop)
@@ -128,6 +132,7 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         element in 'path', angle is the angle between them (on the ring)
         and r is the radius of the ring.
         """
+        import pdb; pdb.set_trace()
         path = self._path_coordinates(path)
         stop_i, stop_f, stop_n = path[0], path[-1], path[1]
         stop_c = stop_i
