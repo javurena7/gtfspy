@@ -88,10 +88,12 @@ def mean_stop_inness(inness_per_stop):
 
 
 if __name__=="__main__":
+    from gtfspy.gtfs import GTFS
+    from gtfspy.routing.inness import Inness
     gtfs_path = "data/lm_daily.sqlite"
     G = GTFS(gtfs_path)
     I = Inness(G)
     I.get_rings()
-    ring = I.rings[5][:2]
+    ring = I.rings[5][:40]
     compute_ring_inness(ring, "test", I)
 

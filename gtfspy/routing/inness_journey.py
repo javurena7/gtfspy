@@ -44,9 +44,114 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         self._inness_summary()
         self._stop_inness_summary()
 
+    def crossed(self, x, y, xi, xf):
+        """
+        Auxiliary check if the current edge crosses the line determined
+        by the origin and destination node
+        """
 
-    def inness(self, journey):
-        return uniform(-1, 1)
+        if isinstance(x, int):
+            X1, Y1 = self.gtfs.get_stop_coordinates(x)
+        else:
+            X1, Y1 = x
+        if isinstance(y, int):
+            X2, Y2 = self.gtfs.get_stop_coordinates(y)
+        else:
+            X2, Y2 = y
+        if isinstance(xi, int):
+            X3, Y3 = self.gtfs.get_stop_coordinates(xi)
+        else:
+            X3, Y3 = xi
+        if isinstance(xf, int):
+            X4, Y4 = self.gtfs.get_stop_coordinates(xf)
+        else:
+            X4, Y4 = xf
+        if (max(X1, X2) < min(X3, X4)):
+            return False
+        A1 = (Y1 - Y2)/(X1 - X2)
+        A2 = (Y3 - Y4)/(X3 - X4)
+        b1 = Y1 - A1 * X1
+        b2 = Y3- A2 * X3
+        if A1 == A2:
+            return False
+        Xa = (b2 - b1) / (A1 - A2)
+        if Xa < max(min(X1, X2), min(X3, X4)) or Xa > min(max(X1, X2), max(X3, X4)):
+            return False
+        return True
+
+
+    def intersection(self, stop_1, stop_2, stop_3, stop_4):
+        """
+        Calculate intersection of two lines
+        """
+        if isinstance(stop_1, int):
+            x1, y1 = self.gtfs.get_stop_coordinates(stop_1)
+        else:
+            x1, y1 = stop_1
+        if isinstance(stop_2, int):
+            x2, y2 = self.gtfs.get_stop_coordinates(stop_2)
+        else:
+            x2, y2 = stop_2
+        if isinstance(stop_3, int):
+            x3, y3 = self.gtfs.get_stop_coordinates(stop_3)
+        else:
+            x3, y3 = stop_3
+        if isinstance(stop_4, int):
+            x4, y4 = self.gtfs.get_stop_coordinates(stop_4)
+        else:
+            x4, y4 = stop_4
+        denom = ((x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4))
+        c1 = (x1 * y2 - y1 * x2)
+        c2 = (x3 * y4 - y3 * x4)
+        xc = (c1 * (x3 - x4) - (x1 - x2) * c2) / denom
+        yc = (c1 * (y3 - y4) - (y1 - y2) * c2) / denom
+        return xc, yc
+
+
+    def get_area(self, path):
+        """
+        The shoelace formula for the are of a polygon
+        """
+        x1, y1 = path[len(path)-1]
+        x2, y2 = path[0]
+        A = (x2 + x1) * (y2 - y1)
+        for n in range(len(path)-1):
+            x1, y1 = path[n]
+            x2, y2 = path[n+1]
+            A += (x2 + x1) * (y2 - y1)
+        return 0.5*abs(A)
+
+
+    def inness(self, path):
+        """
+        Calculate inness for a path. The pair is the first and last
+        element in 'path', angle is the angle between them (on the ring)
+        and r is the radius of the ring.
+        """
+        path = self._path_coordinates(path)
+        stop_i = path[0]
+        stop_f = path[len(path)-1]
+        stop_c = stop_i
+        stop_n = path[1]
+        inness = 0.0
+        n = 1
+        while n < len(path):
+            corners = [stop_c]
+            while n < len(path):
+                print (n)
+                if self.crossed(stop_c, stop_n, stop_i, stop_f):
+                    stop_c = self.intersection(stop_c, stop_n, stop_i, stop_f)
+                    corners.append(stop_c)
+                    n += 1
+                    break
+                corners.append(stop_n)
+                stop_c = stop_n
+                n += 1
+                stop_n = path[n]
+            #TODO check wheter area shoulder be added (outer) or substracted (innir)
+            print(self.get_area(corners))
+            inness += self.get_area(corners)
+        return inness
 
 
     def mean_journey_inness(self):
