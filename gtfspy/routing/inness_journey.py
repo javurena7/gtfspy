@@ -4,6 +4,8 @@ from pandas import cut
 from geoindex import GeoGridIndex, GeoPoint
 from gtfspy.routing.journey_path_analyzer import NodeJourneyPathAnalyzer
 from gtfspy.util import wgs84_distance
+import matplotlib.pyplot as plt
+from gtfspy.route_types import ROUTE_TYPE_TO_COLOR
 
 from numpy.random import uniform # while we get a real inness function
 
@@ -16,7 +18,7 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         super().__init__(labels, walk_to_target_duration, start_time_dep, end_time_dep, origin_stop)
         self.gtfs = gtfs
         self.rings = None
-        self.city_center = GeoPoint(60.171171, 24.941549) #Rautatientori, Helsinki
+        self.city_center = (60.171171, 24.941549) #Rautatientori, Helsinki
         self.distance_to_city_center = None
         self.all_journey_inness = []
         self.path_coordinates = None
@@ -132,28 +134,53 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         element in 'path', angle is the angle between them (on the ring)
         and r is the radius of the ring.
         """
-        import pdb; pdb.set_trace()
         path = self._path_coordinates(path)
-        stop_i, stop_f, stop_n = path[0], path[-1], path[1]
-        stop_c = stop_i
+        stop_int, stop_fnl = path[0], path[-1]
+        slope, cte = self._get_line_params(stop_int, stop_fnl)
         inness = 0.0
-        n = 1
-        while stop_n != stop_f:
-            corners = [stop_c]
-            while stop_n != stop_f:
-                print (n)
-                if self.crossed(stop_c, stop_n, stop_i, stop_f):
-                    stop_c = self.intersection(stop_c, stop_n, stop_i, stop_f)
-                    corners.append(stop_c)
-                    break
-                corners.append(stop_n)
-                stop_c = stop_n
-                n += 1
-                stop_n = path[n]
-            #TODO check wheter area shoulder be added (outer) or substracted (inner)
-            print(self.get_area(corners))
-            inness += self.get_area(corners)
-        return inness
+        corners = []
+        for stop_0, stop_1 in zip(path[:-1], path[1:]):
+            corners.append(stop_0)
+            if self.crossed(stop_int, stop_fnl, stop_0, stop_1):
+                stop_c = self.intersection(stop_int, stop_fnl, stop_0, stop_1)
+                corners.append(stop_c)
+                sign = self._get_inness_path_sign(stop_0, slope, cte)
+                inness += sign * self.get_area(corners)
+                corners = [stop_c]
+
+        distance = wgs84_distance(stop_int[0], stop_int[1], stop_fnl[0], stop_fnl[1])
+        return inness/(distance**2)
+
+    def _get_line_params(self, stop_int, stop_fnl):
+
+        slope = (stop_int[1] - stop_fnl[1])/(stop_int[0] - stop_fnl[0])
+        cte = -slope*stop_fnl[0] + stop_fnl[1]
+
+        return slope, cte
+
+    def _get_inness_path_sign(self, stop_0, slope, cte):
+
+        ref = self.city_center[1] > slope*self.city_center[0] + cte
+        new = stop_0[1] > slope*stop_0[0] + cte
+
+        if ref == new :
+            return 1
+        else:
+            return -1
+
+    def plot_path(self, path):
+        plt.ion()
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection="smopy_axes")
+        path = self._path_coordinates(path)
+        lats = [x[0] for x in path]
+        lons = [x[1] for x in path]
+
+        ax.plot(lons, lats, c='b', zorder=1)
+        ax.scatter(lons, lats, c='k')
+        ax.plot([lons[0], lons[-1]], [lats[0], lats[-1]], c='k', zorder=1)
+        ax.add_scale_bar()
+        return fig, ax
 
 
     def mean_journey_inness(self):
