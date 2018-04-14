@@ -6,6 +6,7 @@ from gtfspy.routing.journey_path_analyzer import NodeJourneyPathAnalyzer
 from gtfspy.util import wgs84_distance
 import matplotlib.pyplot as plt
 from gtfspy.route_types import ROUTE_TYPE_TO_COLOR
+from numpy import inf
 
 from numpy.random import uniform # while we get a real inness function
 
@@ -23,9 +24,9 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         self.all_journey_inness = []
         self.path_coordinates = None
         self.all_journey_coordinates = [self._path_coordinates(path) for path in self.all_journey_stops]
-        self.mean_inness_summary = None
-        self.inness_stop = None
+        self.inness_stops = None
         self._inness_dict = None
+        self.inness_summary = None
 
         self.get_inness()
 
@@ -74,13 +75,23 @@ class JourneyInness(NodeJourneyPathAnalyzer):
             X4, Y4 = xf
         if (max(X1, X2) < min(X3, X4)):
             return False
-        A1 = (Y1 - Y2)/(X1 - X2)
-        A2 = (Y3 - Y4)/(X3 - X4)
+        try:
+            A1 = (Y1 - Y2)/(X1 - X2)
+        except ZeroDivisionError:
+            A1 = inf
+        try:
+            A2 = (Y3 - Y4)/(X3 - X4)
+        except ZeroDivisionError:
+            A2 = inf
         b1 = Y1 - A1 * X1
         b2 = Y3- A2 * X3
         if A1 == A2:
             return False
-        Xa = (b2 - b1) / (A1 - A2)
+
+        try:
+            Xa = (b2 - b1) / (A1 - A2)
+        except:
+            Xa = inf
         if Xa < max(min(X1, X2), min(X3, X4)) or Xa > min(max(X1, X2), max(X3, X4)):
             return False
         return True
@@ -139,18 +150,20 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         slope, cte = self._get_line_params(stop_int, stop_fnl)
         inness = 0.0
         corners = []
-        distance = 0.0
+        total_area = 0.0
         for stop_0, stop_1 in zip(path[:-1], path[1:]):
             corners.append(stop_0)
-            distance += wgs84_distance(stop_0[0], stop_0[1], stop_1[0], stop_1[1])
             if self.crossed(stop_int, stop_fnl, stop_0, stop_1):
                 stop_c = self.intersection(stop_int, stop_fnl, stop_0, stop_1)
                 corners.append(stop_c)
                 sign = self._get_inness_path_sign(stop_0, slope, cte)
-                inness += sign * self.get_area(corners)
+                area = self.get_area(corners)
+                inness += sign * area
+                total_area += area
                 corners = [stop_c]
-        distance = distance/1000
-        return inness/(distance**2)
+        if total_area == 0.0:
+            return 0.0
+        return inness/total_area
 
 
     def _get_line_params(self, stop_int, stop_fnl):
@@ -184,7 +197,6 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         ax.add_scale_bar()
         return fig, ax
 
-
     def mean_journey_inness(self):
         if not self._inness_dict:
             self.get_inness()
@@ -204,7 +216,7 @@ class JourneyInness(NodeJourneyPathAnalyzer):
                 summary[journey_id]['inness'] = self._inness_dict[journey_id]
                 summary[journey_id]['proportion'] = variant_proportion[journey_id]
 
-        self.mean_inness_summary = summary
+        self.inness_summary = summary
 
     def _stop_inness_summary(self):
         if not self._inness_summary:
@@ -212,12 +224,12 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         stop_set = set(stop for journey in self.all_journey_stops for stop in journey)
         stops = {}
         for stop in stop_set:
-            for journey, journey_dict in self.mean_inness_summary.items():
+            for journey, journey_dict in self.inness_summary.items():
                 if stop in journey_dict['stops']:
                     try:
                         stops[stop].append((journey_dict['inness'], journey_dict['proportion']))
                     except KeyError:
                         stops[stop] = [(journey_dict['inness'], journey_dict['proportion'])]
-        self.inness_stop = stops
+        self.inness_stops = stops
 
 

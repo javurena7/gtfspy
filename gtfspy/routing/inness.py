@@ -103,7 +103,6 @@ class Inness(object):
                     pairs.append([(stop_1, stop_2), ang])
         return pairs
 
-
     def correct_departures_by_angle(self, stop_I, departure_stops, min_deg=None):
         """
         Reutrn stops in departure stops, such that they are at least min_deg randians from stop_I, from the city center
@@ -144,12 +143,14 @@ class Inness(object):
         import matplotlib.pyplot as plt
         if not self.rings:
             self.get_rings()
-        fig, ax = plt.subplots(1)
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection = "smopy_axes")
         colors = ['r', 'b', 'k']*int(len(self.rings)/3)
         for ring, color in zip(self.rings.values(), colors):
-            for stop in ring:
-                lat, lon = self.gtfs.get_stop_coordinates(stop)
-                ax.scatter(lon, lat, c=color)
+            coords = [self.gtfs.get_stop_coordinates(stop) for stop in ring]
+            lats = [x[0] for x in coords]
+            lons = [x[1] for x in coords]
+            ax.scatter(lons, lats, c=color)
         return fig, ax
 
 
