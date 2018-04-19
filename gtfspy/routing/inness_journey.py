@@ -27,8 +27,10 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         self.inness_stops = None
         self._inness_dict = None
         self.inness_summary = None
-
-        self.get_inness()
+        if self.number_of_journey_variants() is not None:
+            self.get_inness()
+        else:
+            self.inness_stops = None
 
     def _path_coordinates(self, path):
         assert self.gtfs is not None
@@ -75,23 +77,23 @@ class JourneyInness(NodeJourneyPathAnalyzer):
             X4, Y4 = xf
         if (max(X1, X2) < min(X3, X4)):
             return False
-        try:
-            A1 = (Y1 - Y2)/(X1 - X2)
-        except ZeroDivisionError:
-            A1 = inf
-        try:
-            A2 = (Y3 - Y4)/(X3 - X4)
-        except ZeroDivisionError:
-            A2 = inf
+        #try:
+        A1 = (Y1 - Y2)/(X1 - X2)
+        #except ZeroDivisionError:
+        #    A1 = inf
+        #try:
+        A2 = (Y3 - Y4)/(X3 - X4)
+        #except ZeroDivisionError:
+        A2 = inf
         b1 = Y1 - A1 * X1
         b2 = Y3- A2 * X3
         if A1 == A2:
             return False
 
-        try:
-            Xa = (b2 - b1) / (A1 - A2)
-        except:
-            Xa = inf
+        #try:
+        Xa = (b2 - b1) / (A1 - A2)
+        #except:
+        #    Xa = inf
         if Xa < max(min(X1, X2), min(X3, X4)) or Xa > min(max(X1, X2), max(X3, X4)):
             return False
         return True
@@ -153,7 +155,7 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         total_area = 0.0
         for stop_0, stop_1 in zip(path[:-1], path[1:]):
             corners.append(stop_0)
-            if self.crossed(stop_int, stop_fnl, stop_0, stop_1):
+            if self._crossed(stop_int, stop_fnl, stop_0, stop_1):
                 stop_c = self.intersection(stop_int, stop_fnl, stop_0, stop_1)
                 corners.append(stop_c)
                 sign = self._get_inness_path_sign(stop_0, slope, cte)
@@ -161,10 +163,23 @@ class JourneyInness(NodeJourneyPathAnalyzer):
                 inness += sign * area
                 total_area += area
                 corners = [stop_c]
+            if stop_1 == stop_fnl:
+                sign = self._get_inness_path_sign(stop_0, slope, cte)
+                area = self.get_area(corners)
+                inness += sign * area
+                total_area += area
+
         if total_area == 0.0:
             return 0.0
         return inness/total_area
 
+    def _crossed(self, stop_int, stop_fnl, stop_0, stop_1):
+        slope, cte = self._get_line_params(stop_int, stop_fnl)
+        sign_0 = self._get_inness_path_sign(stop_0, slope, cte)
+        sign_1 = self._get_inness_path_sign(stop_1, slope, cte)
+        if sign_0 == sign_1:
+            return False
+        return True
 
     def _get_line_params(self, stop_int, stop_fnl):
 
@@ -210,7 +225,7 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         summary = {}
         variant_proportion = {journey_id: prop for journey_id, prop in zip(self.journey_set_variants, self.variant_proportions)}
         for id_num, journey_id in enumerate(self.journey_boarding_stops):
-            if journey_id not in summary:
+            if journey_id not in summary and journey_id in variant_proportion:
                 summary[journey_id] = {}
                 summary[journey_id]['stops'] = self.all_journey_stops[id_num]
                 summary[journey_id]['inness'] = self._inness_dict[journey_id]
