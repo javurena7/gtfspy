@@ -7,7 +7,7 @@ from gtfspy.util import wgs84_distance
 import matplotlib.pyplot as plt
 from gtfspy.route_types import ROUTE_TYPE_TO_COLOR
 from numpy import inf
-
+from random import random
 from numpy.random import uniform # while we get a real inness function
 
 # EXAMPLE PATH
@@ -15,7 +15,7 @@ from numpy.random import uniform # while we get a real inness function
 
 
 class JourneyInness(NodeJourneyPathAnalyzer):
-    def __init__(self, labels, walk_to_target_duration, start_time_dep, end_time_dep, origin_stop, gtfs):
+    def __init__(self, labels, walk_to_target_duration, start_time_dep, end_time_dep, origin_stop, gtfs, get_inness=False):
         super().__init__(labels, walk_to_target_duration, start_time_dep, end_time_dep, origin_stop)
         self.gtfs = gtfs
         self.rings = None
@@ -27,7 +27,7 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         self.inness_stops = None
         self._inness_dict = None
         self.inness_summary = None
-        if self.number_of_journey_variants() is not None:
+        if self.number_of_journey_variants() is not None and get_inness:
             self.get_inness()
         else:
             self.inness_stops = None
@@ -182,8 +182,12 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         return True
 
     def _get_line_params(self, stop_int, stop_fnl):
-
-        slope = (stop_int[1] - stop_fnl[1])/(stop_int[0] - stop_fnl[0])
+        stop_int_x, stop_fnl_x = stop_int[0], stop_fnl[0]
+        while stop_int_x == stop_fnl_x:
+            #To avoid cases where slope is infinite, add a little noise
+            stop_int_x += uniform(-1, 1)*10**-4
+            stop_fnl_x += uniform(-1, 1)*10**-4
+        slope = (stop_int[1] - stop_fnl[1])/(stop_int_x - stop_fnl_x)
         cte = -slope*stop_fnl[0] + stop_fnl[1]
 
         return slope, cte

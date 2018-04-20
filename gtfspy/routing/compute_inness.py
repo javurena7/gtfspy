@@ -3,13 +3,16 @@ from gtfspy.routing.inness import Inness
 from gtfspy.routing.helpers import get_transit_connections, get_walk_network
 from gtfspy.routing.multi_objective_pseudo_connection_scan_profiler import MultiObjectivePseudoCSAProfiler
 from gtfspy.gtfs import GTFS
+from gtfspy.util import wgs84_distance
 import pickle
 import matplotlib.pyplot as plt
 import os
 import yaml
+from numpy import mean, std, log
+import networkx as nx
 
 # READ THIS FROM YAML CONFIG FILE
-results_path = 'results'
+results_path = 'results_old'
 cutoff_time = 2 * 3600
 
 def _compute_stops_inness(stop_I, departure_stops, G, connections, walk_network):
@@ -30,12 +33,15 @@ def _compute_stops_inness(stop_I, departure_stops, G, connections, walk_network)
 
     for stop in departure_stops:
         try:
-            JI = JourneyInness(labels[stop], walk_times[stop], start_time, end_time - cutoff_time, stop, G)
-            inness_per_stop = _add_inness_stops(inness_per_stop, JI.inness_stops)
-            journey_inness_list.append(JI)
+            JI = JourneyInness(labels[stop], walk_times[stop], start_time, end_time - cutoff_time, stop, G, get_inness=True)
+            if JI.inness_stops is not None:
+                inness_per_stop = _add_inness_stops(inness_per_stop, JI.inness_stops)
+                journey_inness_list.append(JI)
+            else:
+                fails.append((stop_I, stop))
+                print ("Failed: from stop {0} to stop {1}, no journey variants".format(stop, stop_I))
         except:
             print("Failed: from stop {0} to stop {1}".format(str(stop), str(stop_I)))
-
             fails.append((stop_I, stop))
 
     return inness_per_stop, journey_inness_list, fails
@@ -50,6 +56,29 @@ def _add_inness_stops(inness_per_stop, new_obs):
 
     return inness_per_stop
 
+
+def _get_connections_network(connections, walk_network, G):
+    """
+    Obtain connections network, used to calculate the Inness of the shortest paths
+    """
+    net = nx.DiGraph()
+    for con in connections:
+        arrival_stop = con.arrival_stop
+        departure_stop = con.departure_stop
+        d = wgs84_stop_distance(arrival_stop, departure_stop, G)
+        if net.has_edge(departure_stop, arrival_stop):
+            d = min(d, net[departure_stop][arrival_stop]['d'])
+        net.add_edge(departure_stop, arrival_stop, d=d)
+    for d_stop, a_stop, weight in walk_network.edges_iter(data=True):
+        if net.has_edge(d_stop, a_stop):
+            d = min(d, weight['d'])
+        net.add_edge(d_stop, a_stop, d=d)
+    return net
+
+def wgs84_stop_distance(stop_1, stop_2, G):
+    lat_1, lon_1 = G.get_stop_coordinates(stop_1)
+    lat_2, lon_2 = G.get_stop_coordinates(stop_2)
+    return wgs84_distance(lat_1, lon_1, lat_2, lon_2)
 
 def compute_ring_inness(ring_Is=None, ring_id=None, inness_obj=None, total_ring=None):
     G = inness_obj.gtfs
@@ -90,24 +119,34 @@ def compute_ring_inness(ring_Is=None, ring_id=None, inness_obj=None, total_ring=
 
     return inness_per_stop
 
-def mean_stop_inness(inness_per_stop):
+def mean_stop_inness(inness_per_stop, min_samples = 5):
     mean_stop_inness = {}
     for stop, values in inness_per_stop.items():
-        if len(values) > 4:
+        if len(values) >= min_samples:
             tot_prop = sum(x[1] for x in values)
             mean_stop_inness[stop] = sum(x[0] * x[1] for x in values)/tot_prop
     return mean_stop_inness
 
-def plot_inness(mean_inness_per_stop, G):
+
+def number_of_routes_per_stop(inness_per_stop):
+    num_of_stops = {}
+    for stop, values in inness_per_stop.items():
+        num_of_stops[stop] = log(sum(x[1] for x in values))
+    mean_v = mean([x for x in num_of_stops.values()])
+    sd_v = std([x for x in num_of_stops.values()])
+    return {stop: (value - mean_v)/sd_v for stop, value in num_of_stops.items()}
+
+
+def plot_inness(mean_inness_per_stop, G, title="Mean inness for rings"):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="smopy_axes")
     coords = [G.get_stop_coordinates(stop) for stop in mean_inness_per_stop.keys()]
     inness = list(mean_inness_per_stop.values())
     lats = [x[0] for x in coords]
     lons = [x[1] for x in coords]
-    im = ax.scatter(lons, lats, c=inness, alpha=.55, zorder=2)
+    im = ax.scatter(lons, lats, c=inness, cmap="bwr",alpha=.55, zorder=2)
     ax.add_scale_bar()
-    ax.set_title("Mean inness for rings 3.5 and  7 km from \n Rautatientori")
+    ax.set_title(title)
     fig.colorbar(im, ax=ax)
     return fig, ax
 
@@ -116,12 +155,12 @@ if __name__=="__main__":
     from gtfspy.gtfs import GTFS
     from gtfspy.routing.inness import Inness
     from numpy.random import choice
-    gtfs_path = "data/lm_daily.sqlite"
+    gtfs_path = "data/old_daily.sqlite"
     G = GTFS(gtfs_path)
     I = Inness(G)
     I.get_rings()
     #rings = [36, 15, 3]#[3, 6, 10, 15, 25, 30, 36, 43, 59] [10, 30, 59][6, 25, 43][36, 15, 3]
-    rings = [8, 27, 48, 55]#[2, 5, 8, 17, 22, 27, 33, 40, 48, 55][2, 17, 33][5, 22, 40][8, 27, 48, 55]
+    rings = [5, 22, 40]#[2, 5, 8, 17, 22, 27, 33, 40, 48, 55][2, 17, 33][5, 22, 40][8, 27, 48, 55] #
     for ring_idx in rings:
         ring = I.rings[ring_idx]
         ring_sample = list(choice(ring, 25))
