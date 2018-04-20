@@ -6,8 +6,7 @@ from gtfspy.routing.journey_path_analyzer import NodeJourneyPathAnalyzer
 from gtfspy.util import wgs84_distance
 import matplotlib.pyplot as plt
 from gtfspy.route_types import ROUTE_TYPE_TO_COLOR
-from numpy import inf
-from random import random
+from numpy import inf, array, where
 from numpy.random import uniform # while we get a real inness function
 
 # EXAMPLE PATH
@@ -15,19 +14,24 @@ from numpy.random import uniform # while we get a real inness function
 
 
 class JourneyInness(NodeJourneyPathAnalyzer):
-    def __init__(self, labels, walk_to_target_duration, start_time_dep, end_time_dep, origin_stop, gtfs, get_inness=False):
+    def __init__(self, labels, walk_to_target_duration, start_time_dep, end_time_dep, origin_stop, gtfs, get_inness=False, rush_limit=None):
         super().__init__(labels, walk_to_target_duration, start_time_dep, end_time_dep, origin_stop)
         self.gtfs = gtfs
         self.rings = None
         self.city_center = (60.171171, 24.941549) #Rautatientori, Helsinki
         self.distance_to_city_center = None
         self.all_journey_inness = []
+        self.departure_times = None
         self.path_coordinates = None
-        self.all_journey_coordinates = [self._path_coordinates(path) for path in self.all_journey_stops]
+        #self.all_journey_coordinates = [self._path_coordinates(path) for path in self.all_journey_stops]
+        self.rush_limit = rush_limit
         self.inness_stops = None
         self._inness_dict = None
         self.inness_summary = None
-        if self.number_of_journey_variants() is not None and get_inness:
+        self.journey_proportions = None
+        self.proportions_after = None
+        self.proportions_before = None
+        if get_inness:
             self.get_inness()
         else:
             self.inness_stops = None
@@ -50,7 +54,9 @@ class JourneyInness(NodeJourneyPathAnalyzer):
                 all_journey_inness.append(inness_dict[journey_id])
         self.all_journey_inness = all_journey_inness
         self._inness_dict = inness_dict
+        self._journey_proportions()
         self._inness_summary()
+        self._path_inness_summary()
         self._stop_inness_summary()
 
     def crossed(self, x, y, xi, xf):
@@ -171,7 +177,7 @@ class JourneyInness(NodeJourneyPathAnalyzer):
 
         if total_area == 0.0:
             return 0.0
-        return inness/total_area
+        return round(inness/total_area, 4)
 
     def _crossed(self, stop_int, stop_fnl, stop_0, stop_1):
         slope, cte = self._get_line_params(stop_int, stop_fnl)
@@ -227,15 +233,52 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         if not self._inness_dict:
             self.get_inness()
         summary = {}
-        variant_proportion = {journey_id: prop for journey_id, prop in zip(self.journey_set_variants, self.variant_proportions)}
         for id_num, journey_id in enumerate(self.journey_boarding_stops):
-            if journey_id not in summary and journey_id in variant_proportion:
+            if journey_id not in summary and journey_id in self.journey_proportions:
                 summary[journey_id] = {}
                 summary[journey_id]['stops'] = self.all_journey_stops[id_num]
                 summary[journey_id]['inness'] = self._inness_dict[journey_id]
-                summary[journey_id]['proportion'] = variant_proportion[journey_id]
+                summary[journey_id]['proportion'] = self.journey_proportions[journey_id]
+                if self.rush_limit:
+                    summary[journey_id]['proportion_before'] = self.journey_proportions_before.get(journey_id, 0.0)
+                    summary[journey_id]['proportion_after'] = self.journey_proportions_after.get(journey_id, 0.0)
 
         self.inness_summary = summary
+
+    def _departure_times(self):
+        self.departure_times = [journey[0]['dep_time'] for journey in self.connection_list]
+
+    def _journey_proportions(self):
+        if self.departure_times is None:
+            self._departure_times()
+        modified_dep = [self.start_time_dep] + self.departure_times[:-1]
+        diff = [y-x for x, y in zip(modified_dep, self.departure_times)]
+        self.all_journey_importance_time = diff
+        self.journey_proportions = self._get_proportions(self.journey_boarding_stops, diff)
+        if self.rush_limit:
+            limit_idx = where(array(self.departure_times) < self.rush_limit)[0][-1]
+            self.journey_proportions_before = self._get_proportions(self.journey_boarding_stops[:limit_idx], diff[:limit_idx])
+            self.journey_proportions_after = self._get_proportions(self.journey_boarding_stops[limit_idx:], diff[limit_idx:])
+
+    def _get_proportions(self, ids, times):
+        props = {}
+        for journey_id, time in zip(ids, times):
+            try:
+                props[journey_id] += time
+            except KeyError:
+                props[journey_id] = time
+        return {key: round(value/sum(times), 4) for key, value in props.items()}
+
+    def _path_inness_summary(self):
+
+        mean_journey_inness = sum(i * j for i, j in zip(self.all_journey_inness, self.all_journey_importance_time))/sum(self.all_journey_importance_time)
+        if self.rush_limit:
+            before_mean = round(sum(self._inness_dict[j_id] * prop for j_id, prop in self.journey_proportions_before.items()), 5)
+            after_mean = round(sum(self._inness_dict[j_id] * prop for j_id, prop in self.journey_proportions_after.items()), 5)
+
+            self.path_inness_summary = {(self.origin_stop, self.target_stop): [mean_journey_inness, before_mean, after_mean]}
+        else:
+            self.path_inness_summary = {(self.origin_stop, self.target_stop): [mean_journey_inness]}
 
     def _stop_inness_summary(self):
         if not self._inness_summary:
@@ -245,10 +288,16 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         for stop in stop_set:
             for journey, journey_dict in self.inness_summary.items():
                 if stop in journey_dict['stops']:
-                    try:
-                        stops[stop].append((journey_dict['inness'], journey_dict['proportion']))
-                    except KeyError:
-                        stops[stop] = [(journey_dict['inness'], journey_dict['proportion'])]
+                    if self.rush_limit:
+                        try:
+                            stops[stop].append((journey_dict['inness'], journey_dict['proportion'], journey_dict['proportion_before'], journey_dict['proportion_after']))
+                        except KeyError:
+                            stops[stop] = [(journey_dict['inness'], journey_dict['proportion'], journey_dict['proportion_before'], journey_dict['proportion_after'])]
+                    else:
+                        try:
+                            stops[stop].append((journey_dict['inness'], journey_dict['proportion']))
+                        except KeyError:
+                            stops[stop] = [(journey_dict['inness'], journey_dict['proportion'])]
         self.inness_stops = stops
 
 
