@@ -31,6 +31,7 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         self.journey_proportions = None
         self.proportions_after = None
         self.proportions_before = None
+        self.path_inness_summary = None
         if get_inness:
             self.get_inness()
         else:
@@ -276,9 +277,9 @@ class JourneyInness(NodeJourneyPathAnalyzer):
             before_mean = round(sum(self._inness_dict[j_id] * prop for j_id, prop in self.journey_proportions_before.items()), 5)
             after_mean = round(sum(self._inness_dict[j_id] * prop for j_id, prop in self.journey_proportions_after.items()), 5)
 
-            self.path_inness_summary = {(self.origin_stop, self.target_stop): [mean_journey_inness, before_mean, after_mean]}
+            self.path_inness_summary = ((self.origin_stop, self.target_stop), [mean_journey_inness, before_mean, after_mean])
         else:
-            self.path_inness_summary = {(self.origin_stop, self.target_stop): [mean_journey_inness]}
+            self.path_inness_summary = ((self.origin_stop, self.target_stop), [mean_journey_inness])
 
     def _stop_inness_summary(self):
         if not self._inness_summary:
