@@ -168,7 +168,7 @@ def plot_inness(mean_inness_per_stop, G, title="Mean inness for rings"):
     fig.colorbar(im, ax=ax)
     return fig, ax
 
-def plot_origin_inness(paths, G, col=1, title='Mean innes of origin'):
+def plot_origin_inness(paths, G, col=1, title='Mean innes of origin', plot_destinations=False):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="smopy_axes")
     summary = {}
@@ -182,13 +182,13 @@ def plot_origin_inness(paths, G, col=1, title='Mean innes of origin'):
     lats = [x[0] for x in coords_from]
     lons = [x[1] for x in coords_from]
     im = ax.scatter(lons, lats, c=inness, cmap="bwr", alpha=.55)
-
-    coords_to = [G.get_stop_coordinates(stop) for stop in list(set([k[1] for k in paths]))]
-    lats = [x[0] for x in coords_to]
-    lons = [x[1] for x in coords_to]
+    if plot_destinations:
+        coords_to = [G.get_stop_coordinates(stop) for stop in list(set([k[1] for k in paths]))]
+        lats = [x[0] for x in coords_to]
+        lons = [x[1] for x in coords_to]
+        ax.scatter(lons, lats, c='k')
     ax.add_scale_bar()
     ax.set_title(title)
-    ax.scatter(lons, lats, c='k')
     fig.colorbar(im, ax=ax)
     return fig, ax
 

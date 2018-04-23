@@ -15,7 +15,8 @@ from numpy.random import uniform, choice # while we get a real inness function
 
 class JourneyInness(NodeJourneyPathAnalyzer):
     def __init__(self, labels, walk_to_target_duration, start_time_dep, end_time_dep, origin_stop, gtfs, get_inness=False, rush_limit=None):
-        super().__init__(labels, walk_to_target_duration, start_time_dep, end_time_dep, origin_stop)
+        if get_inness:
+            super().__init__(labels, walk_to_target_duration, start_time_dep, end_time_dep, origin_stop)
         self.gtfs = gtfs
         self.rings = None
         self.city_center = (60.171171, 24.941549) #Rautatientori, Helsinki
@@ -203,6 +204,7 @@ class JourneyInness(NodeJourneyPathAnalyzer):
 
     def _departure_times(self):
         self.departure_times = [journey[0]['dep_time'] for journey in self.connection_list]
+
 
     def _journey_proportions(self):
         if self.departure_times is None:
