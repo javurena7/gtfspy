@@ -78,7 +78,11 @@ class Inness(object):
         a = wgs84_distance(lat1, lon1, latc, lonc)
         b = wgs84_distance(lat2, lon2, latc, lonc)
         cosang = (a**2 + b**2 - c**2)/(2*a*b)
-        return acos(cosang)
+        try:
+            ang = acos(cosang)
+        except:
+            ang = 0.0
+        return ang
 
     def get_ring_pairs(self, ring, sample_size=1.0, min_deg=.17):
         """

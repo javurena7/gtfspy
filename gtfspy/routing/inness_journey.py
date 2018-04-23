@@ -7,7 +7,7 @@ from gtfspy.util import wgs84_distance
 import matplotlib.pyplot as plt
 from gtfspy.route_types import ROUTE_TYPE_TO_COLOR
 from numpy import inf, array, where
-from numpy.random import uniform # while we get a real inness function
+from numpy.random import uniform, choice # while we get a real inness function
 
 # EXAMPLE PATH
 # path = [1929, 1843, 1686, 1563, 1505, 1333, 1179, 1069, 916, 817, 774, 706, 707, 594, 647, 586, 540, 483, 510, 423, 407, 397]
@@ -59,51 +59,6 @@ class JourneyInness(NodeJourneyPathAnalyzer):
         self._inness_summary()
         self._path_inness_summary()
         self._stop_inness_summary()
-
-    def crossed(self, x, y, xi, xf):
-        """
-        Auxiliary check if the current edge crosses the line determined
-        by the origin and destination node
-        """
-
-        if isinstance(x, int):
-            X1, Y1 = self.gtfs.get_stop_coordinates(x)
-        else:
-            X1, Y1 = x
-        if isinstance(y, int):
-            X2, Y2 = self.gtfs.get_stop_coordinates(y)
-        else:
-            X2, Y2 = y
-        if isinstance(xi, int):
-            X3, Y3 = self.gtfs.get_stop_coordinates(xi)
-        else:
-            X3, Y3 = xi
-        if isinstance(xf, int):
-            X4, Y4 = self.gtfs.get_stop_coordinates(xf)
-        else:
-            X4, Y4 = xf
-        if (max(X1, X2) < min(X3, X4)):
-            return False
-        #try:
-        A1 = (Y1 - Y2)/(X1 - X2)
-        #except ZeroDivisionError:
-        #    A1 = inf
-        #try:
-        A2 = (Y3 - Y4)/(X3 - X4)
-        #except ZeroDivisionError:
-        A2 = inf
-        b1 = Y1 - A1 * X1
-        b2 = Y3- A2 * X3
-        if A1 == A2:
-            return False
-
-        #try:
-        Xa = (b2 - b1) / (A1 - A2)
-        #except:
-        #    Xa = inf
-        if Xa < max(min(X1, X2), min(X3, X4)) or Xa > min(max(X1, X2), max(X3, X4)):
-            return False
-        return True
 
 
     def intersection(self, stop_1, stop_2, stop_3, stop_4):
@@ -272,7 +227,7 @@ class JourneyInness(NodeJourneyPathAnalyzer):
 
     def _path_inness_summary(self):
 
-        mean_journey_inness = sum(i * j for i, j in zip(self.all_journey_inness, self.all_journey_importance_time))/sum(self.all_journey_importance_time)
+        mean_journey_inness = round(sum(i * j for i, j in zip(self.all_journey_inness, self.all_journey_importance_time))/sum(self.all_journey_importance_time), 5)
         if self.rush_limit:
             before_mean = round(sum(self._inness_dict[j_id] * prop for j_id, prop in self.journey_proportions_before.items()), 5)
             after_mean = round(sum(self._inness_dict[j_id] * prop for j_id, prop in self.journey_proportions_after.items()), 5)
@@ -299,6 +254,7 @@ class JourneyInness(NodeJourneyPathAnalyzer):
                             stops[stop].append((journey_dict['inness'], journey_dict['proportion']))
                         except KeyError:
                             stops[stop] = [(journey_dict['inness'], journey_dict['proportion'])]
+
         self.inness_stops = stops
 
 

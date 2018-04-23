@@ -8,18 +8,19 @@ import pickle
 import matplotlib.pyplot as plt
 import os
 import yaml
-from numpy import mean, std, log
+from numpy.random import choice
+from numpy import mean, std, log, array
 import networkx as nx
 
 # READ THIS FROM YAML CONFIG FILE
 results_path = 'results_old'
 cutoff_time = 2 * 3600
 
-def _compute_stops_inness(stop_I, departure_stops, G, connections, walk_network):
+def _compute_stops_inness(stop_I, ring_stops, departure_stops, G, connections, walk_network):
 
-    start_time = G.get_suitable_date_for_daily_extract(ut=True) + 8 * 3600
-    end_time = G.get_suitable_date_for_daily_extract(ut=True) + 12 * 3600
-    rush_limit = G.get_suitable_date_for_daily_extract(ut=True) + 10 * 3600
+    start_time = G.get_suitable_date_for_daily_extract(ut=True) + 7 * 3600
+    end_time = G.get_suitable_date_for_daily_extract(ut=True) + 13 * 3600
+    rush_limit = G.get_suitable_date_for_daily_extract(ut=True) + 9 * 3600
     mpCSA = MultiObjectivePseudoCSAProfiler(connections, targets=[stop_I], walk_network=walk_network, end_time_ut=end_time, transfer_margin=120, start_time_ut=start_time, walk_speed=1.5, verbose=True, track_vehicle_legs=True, track_time=True, track_route=True)
 
     mpCSA.run()
@@ -35,8 +36,9 @@ def _compute_stops_inness(stop_I, departure_stops, G, connections, walk_network)
     for stop in departure_stops:
         try:
             JI = JourneyInness(labels[stop], walk_times[stop], start_time, end_time - cutoff_time, stop, G, get_inness=True, rush_limit=rush_limit)
-            if JI.inness_stops is not None:
+            if JI.inness_stops is not None and stop in ring_stops:
                 inness_per_stop = _add_inness_stops(inness_per_stop, JI.inness_stops)
+            if JI.path_inness_summary is not None:
                 path, summary = JI.path_inness_summary
                 inness_path_summary[path] = summary
                 journey_inness_list.append(JI)
@@ -78,10 +80,12 @@ def _get_connections_network(connections, walk_network, G):
         net.add_edge(d_stop, a_stop, d=d)
     return net
 
+
 def wgs84_stop_distance(stop_1, stop_2, G):
     lat_1, lon_1 = G.get_stop_coordinates(stop_1)
     lat_2, lon_2 = G.get_stop_coordinates(stop_2)
     return wgs84_distance(lat_1, lon_1, lat_2, lon_2)
+
 
 def compute_ring_inness(ring_Is=None, ring_id=None, inness_obj=None, total_ring=None):
     G = inness_obj.gtfs
@@ -95,9 +99,11 @@ def compute_ring_inness(ring_Is=None, ring_id=None, inness_obj=None, total_ring=
     fails = []
     for i, stop_I in enumerate(ring_Is):
         print(stop_I, i + 1, "/", len(ring_Is))
-        departure_stops = inness_obj.correct_departures_by_angle(stop_I, total_ring)
+        ring_stops = inness_obj.correct_departures_by_angle(stop_I, ring_Is)
+        departure_stops = inness_obj.correct_departures_by_angle(stop_I, list(G.stops()['stop_I']))
+        departure_stops = [stop for stop in departure_stops if wgs84_stop_distance(stop, stop_I, G) > 1000]
         try:
-            stop_inness, inness_path_summary, journey_inness_list, new_fails  = _compute_stops_inness(stop_I, departure_stops, G, connections, walk_network)
+            stop_inness, inness_path_summary, journey_inness_list, new_fails  = _compute_stops_inness(stop_I, ring_stops, departure_stops, G, connections, walk_network)
             fails.append(new_fails)
         except KeyError:
             print("Inness computation failed")
@@ -131,8 +137,8 @@ def compute_ring_inness(ring_Is=None, ring_id=None, inness_obj=None, total_ring=
 def mean_stop_inness(inness_per_stop, min_samples = 5, col=1):
     mean_stop_inness = {}
     for stop, values in inness_per_stop.items():
-        if len(values) >= min_samples:
-            tot_prop = sum(x[1] for x in values)
+        tot_prop = sum(x[col] for x in values)
+        if len(values) >= min_samples and tot_prop > 0:
             if col < 4:
                 mean_stop_inness[stop] = sum(x[0] * x[col] for x in values)/tot_prop
             else:
@@ -162,8 +168,7 @@ def plot_inness(mean_inness_per_stop, G, title="Mean inness for rings"):
     fig.colorbar(im, ax=ax)
     return fig, ax
 
-
-def plot_paths(paths, G, col=1, title='Mean innes of origin'):
+def plot_origin_inness(paths, G, col=1, title='Mean innes of origin'):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="smopy_axes")
     summary = {}
@@ -177,10 +182,27 @@ def plot_paths(paths, G, col=1, title='Mean innes of origin'):
     lats = [x[0] for x in coords_from]
     lons = [x[1] for x in coords_from]
     im = ax.scatter(lons, lats, c=inness, cmap="bwr", alpha=.55)
+
+    coords_to = [G.get_stop_coordinates(stop) for stop in list(set([k[1] for k in paths]))]
+    lats = [x[0] for x in coords_to]
+    lons = [x[1] for x in coords_to]
     ax.add_scale_bar()
     ax.set_title(title)
+    ax.scatter(lons, lats, c='k')
     fig.colorbar(im, ax=ax)
     return fig, ax
+
+def get_stops_sample(ring, sample_size, I):
+    ring = ring.copy()
+    sample = [choice(ring)]
+    while len(sample) < sample_size and len(ring) > 0:
+        test_stop = choice(ring)
+        ring.remove(test_stop)
+        angs = [I.angle_from_city_center(test_stop, stop) for stop in sample]
+        if all(array(angs) > I.min_deg*.5):
+            sample.append(test_stop)
+    return sample
+
 
 if __name__=="__main__":
     from gtfspy.gtfs import GTFS
@@ -190,15 +212,17 @@ if __name__=="__main__":
     G = GTFS(gtfs_path)
     I = Inness(G)
     I.get_rings()
-    #rings = [36, 15, 3]#[3, 6, 10, 15, 25, 30, 36, 43, 59] [10, 30, 59][6, 25, 43][36, 15, 3]
-    rings = [5, 22, 40]#[2, 5, 8, 17, 22, 27, 33, 40, 48, 55][2, 17, 33][5, 22, 40][8, 27, 48, 55] #
-    rings = [24, 35, 45]
+    rings = [31, 32, 33, 34, 36, 37, 38, 39, 41, 42, 43, 44, 46, 47, 48, 49, 51, 52, 53, 54]
+    #[1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24, 26, 27, 28, 29] #[10, 20, 30]
+    sample_size = 5
     for ring_idx in rings:
         ring = I.rings[ring_idx]
-        ring_sample = list(choice(ring, 7))
-        ring_id = "{}_sample_7".format(str(ring_idx))
+        ring_sample = get_stops_sample(ring.copy(), sample_size, I)
+        ring_id = "{}_sample_{}".format(str(ring_idx), str(sample_size))
         full_path = os.path.join(results_path, ring_id)
+        with  open(full_path + "_sample_stops.p", "wb") as f:
+            pickle.dump(ring_sample, f)
         if not os.path.exists(full_path):
             os.makedirs(full_path)
-        compute_ring_inness(ring_sample, ring_id, I, ring)
+        compute_ring_inness(ring_sample, ring_id, I, ring.copy())
 
