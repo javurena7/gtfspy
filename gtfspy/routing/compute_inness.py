@@ -13,7 +13,7 @@ from numpy import mean, std, log, array
 import networkx as nx
 
 # READ THIS FROM YAML CONFIG FILE
-results_path = 'results_old'
+results_path = 'results'
 cutoff_time = 2 * 3600
 
 def _compute_stops_inness(stop_I, ring_stops, departure_stops, G, connections, walk_network):
@@ -208,16 +208,20 @@ if __name__=="__main__":
     from gtfspy.gtfs import GTFS
     from gtfspy.routing.inness import Inness
     from numpy.random import choice
-    gtfs_path = "data/old_daily.sqlite"
+    from pandas import read_pickle
+    gtfs_path = "data/lm_daily.sqlite"
     G = GTFS(gtfs_path)
     I = Inness(G)
     I.get_rings()
-    rings = [31, 32, 33, 34, 36, 37, 38, 39, 41, 42, 43, 44, 46, 47, 48, 49, 51, 52, 53, 54]
-    #[1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23, 24, 26, 27, 28, 29] #[10, 20, 30]
+    #rings = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24] #[10, 20, 30]
+    rings = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54]
     sample_size = 5
     for ring_idx in rings:
         ring = I.rings[ring_idx]
-        ring_sample = get_stops_sample(ring.copy(), sample_size, I)
+        try:
+            ring_sample = read_pickle('results_old/{}_sample_{}_sample_stops.p'.format(ring_idx, sample_size))
+        except:
+            ring_sample = get_stops_sample(ring.copy(), sample_size, I)
         ring_id = "{}_sample_{}".format(str(ring_idx), str(sample_size))
         full_path = os.path.join(results_path, ring_id)
         with  open(full_path + "_sample_stops.p", "wb") as f:
