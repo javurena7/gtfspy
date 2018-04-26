@@ -11,6 +11,7 @@ import yaml
 from numpy.random import choice
 from numpy import mean, std, log, array
 import networkx as nx
+from pandas import read_pickle
 
 # READ THIS FROM YAML CONFIG FILE
 results_path = 'results'
@@ -162,13 +163,13 @@ def plot_inness(mean_inness_per_stop, G, title="Mean inness for rings"):
     inness = list(mean_inness_per_stop.values())
     lats = [x[0] for x in coords]
     lons = [x[1] for x in coords]
-    im = ax.scatter(lons, lats, c=inness, cmap="bwr", alpha=.55, zorder=2)
+    im = ax.scatter(lons, lats, c=inness, cmap="bwr", alpha=.55, zorder=2, vmin=-1, vmax=1)
     ax.add_scale_bar()
     ax.set_title(title)
     fig.colorbar(im, ax=ax)
     return fig, ax
 
-def plot_origin_inness(paths, G, col=1, title='Mean innes of origin', plot_destinations=False):
+def plot_origin_inness(paths, G, col=0, title='Mean innes of origin', plot_destinations=False):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="smopy_axes")
     summary = {}
@@ -181,7 +182,7 @@ def plot_origin_inness(paths, G, col=1, title='Mean innes of origin', plot_desti
     coords_from = [G.get_stop_coordinates(stop) for stop in summary.keys()]
     lats = [x[0] for x in coords_from]
     lons = [x[1] for x in coords_from]
-    im = ax.scatter(lons, lats, c=inness, cmap="bwr", alpha=.55)
+    im = ax.scatter(lons, lats, c=inness, cmap="bwr", alpha=.55, vmin=-1, vmax=1)
     if plot_destinations:
         coords_to = [G.get_stop_coordinates(stop) for stop in list(set([k[1] for k in paths]))]
         lats = [x[0] for x in coords_to]
@@ -191,6 +192,64 @@ def plot_origin_inness(paths, G, col=1, title='Mean innes of origin', plot_desti
     ax.set_title(title)
     fig.colorbar(im, ax=ax)
     return fig, ax
+
+def plot_rushhour_diff(paths, G, title=''):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="smopy_axes")
+    summary = {}
+    for key, val in paths.items():
+        try:
+            summary[key[0]].append(val[1] - val[2])
+        except KeyError:
+            summary[key[0]] = [val[1] - val[2]]
+    inness = [sum(x)/len(x) for x in summary.values()]
+    coords_from = [G.get_stop_coordinates(stop) for stop in summary.keys()]
+    lats = [x[0] for x in coords_from]
+    lons = [x[1] for x in coords_from]
+    im = ax.scatter(lons, lats, c=inness, cmap="bwr", alpha=.55, vmin=-1, vmax=1)
+    ax.add_scale_bar()
+    ax.set_title(title)
+    fig.colorbar(im, ax=ax)
+    return fig, ax
+
+
+def plot_shortestpath_inness(paths, G, title='Mean inness of shortest paths'):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="smopy_axes")
+    summary = {}
+    for key, val in paths.items():
+        try:
+            summary[key[0]].append(val)
+        except KeyError:
+            summary[key[0]] = [val]
+    inness = [sum(x)/len(x) for x in summary.values()]
+    coords_from = [G.get_stop_coordinates(stop) for stop in summary.keys()]
+    lats = [x[0] for x in coords_from]
+    lons = [x[1] for x in coords_from]
+    im = ax.scatter(lons, lats, c=inness, cmap="bwr", alpha=.55, vmin=-1, vmax=1)
+    ax.add_scale_bar()
+    ax.set_title(title)
+    fig.colorbar(im, ax=ax)
+    return fig, ax
+
+def plot_differece_stops_inness(old_dic, new_dic, G, title=""):
+    diff = {}
+    for path, inness in new_dic.items():
+        if path in old_dic:
+            diff[path] = inness - old_dic[path]
+
+    inness = [sum(x)/len(x) for x in diff.values()]
+    coords_from = [G.get_stop_coordinates(stop) for stop in diff.keys()]
+    lats = [x[0] for x in coords_from]
+    lons = [x[1] for x in coords_from]
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="smopy_axes")
+    im = ax.scatter(lons, lats, c=inness, cmap="bwr", alpha=.55, vmin=-.5, vmax=.5)
+    ax.add_scale_bar()
+    ax.set_title(title)
+    fig.colorbar(im, ax=ax)
+    return fig, ax
+
 
 def get_stops_sample(ring, sample_size, I):
     ring = ring.copy()
@@ -203,6 +262,104 @@ def get_stops_sample(ring, sample_size, I):
             sample.append(test_stop)
     return sample
 
+def compute_shortest_path_inness(net, JI, ouput_path, rings):
+    paths = {}
+    for ring in rings:
+        try:
+            ring_sample = read_pickle('results_old/{}_sample_{}_sample_stops.p'.format(ring, 5))
+        except:
+            print("Ring {} not found".format(ring))
+            ring_sample = None
+        ring_paths = {}
+        for stop in ring_sample:
+            stop_paths = {}
+            spaths = nx.shortest_path(net, target=stop, weight='d')
+            for origin, path in spaths.items():
+                try:
+                    stop_paths[(origin, stop)] = JI.inness(path)
+                except:
+                    pass
+            ring_paths.update(stop_paths)
+        pickle.dump(ring_paths, open(output_path + '_{}.p'.format(ring), "wb"))
+        paths.update(ring_paths)
+    pickle.dump(paths, open(output_path + '_full.p', "wb"))
+
+def plot_origin_inness_difference(G, old_inn, new_inn, col=0, title=""):
+    """
+    boh
+    """
+
+    diff = {}
+    for path, inness in new_inn.items():
+        if path in old_inn:
+            try:
+                diff[path[0]].append(inness[col] - old_inn[path][col])
+            except:
+                diff[path[0]] = [inness[col] - old_inn[path][col]]
+    inness = [sum(x)/len(x) for x in diff.values()]
+    coords_from = [G.get_stop_coordinates(stop) for stop in diff.keys()]
+    lats = [x[0] for x in coords_from]
+    lons = [x[1] for x in coords_from]
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="smopy_axes")
+    #import pdb; pdb.set_trace()
+    im = ax.scatter(lons, lats, c=inness, cmap="bwr", alpha=.55, vmin=-.8, vmax=.8)
+    ax.add_scale_bar()
+    ax.set_title(title)
+    fig.colorbar(im, ax=ax)
+    return fig, ax
+
+def plot_shortest_path_difference(G, old_dic, new_dic, title=''):
+    diff = {}
+    for path, inness in new_dic.items():
+        if path in old_dic:
+            try:
+                diff[path[0]].append(inness - old_dic[path])
+            except:
+                diff[path[0]] = [inness - old_dic[path]]
+    inness = [sum(x)/len(x) for x in diff.values()]
+    coords_from = [G.get_stop_coordinates(stop) for stop in diff.keys()]
+    lats = [x[0] for x in coords_from]
+    lons = [x[1] for x in coords_from]
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="smopy_axes")
+    im = ax.scatter(lons, lats, c=inness, cmap="bwr", alpha=.55, vmin=-.5, vmax=.5)
+    ax.add_scale_bar()
+    ax.set_title(title)
+    fig.colorbar(im, ax=ax)
+    return fig, ax
+
+def plot_four_innesses(G, old_dic, new_dic, short_old, short_new, title=''):
+    diff = {}
+    for path, inness in new_dic.items():
+        if path in old_dic and path in short_old and path in short_new:
+            try:
+                diff[path[0]].append(inness - short_new[path] - (old_dic[path] - short_old[path]))
+            except:
+                diff[path[0]] = [inness - short_new[path] - (old_dic[path] - short_old[path])]
+    inness = [sum(x)/len(x) for x in diff.values()]
+    coords_from = [G.get_stop_coordinates(stop) for stop in diff.keys()]
+    lats = [x[0] for x in coords_from]
+    lons = [x[1] for x in coords_from]
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="smopy_axes")
+    im = ax.scatter(lons, lats, c=inness, cmap="bwr", alpha=.55, vmin=-1, vmax=1)
+    ax.add_scale_bar()
+    ax.set_title(title)
+    fig.colorbar(im, ax=ax)
+    return fig, ax
+
+def _inness_difference(dic_1, dic_2, col=0, take_origin=True):
+    diff = {}
+    for path, inness in dic_1.items():
+        if path in dic_2:
+            try:
+                diff[path[0]].append(inness - dic_2[path])
+            except:
+                diff[path[0]] = [inness - dic_2[path]]
+
+    return diff
+
 
 if __name__=="__main__":
     from gtfspy.gtfs import GTFS
@@ -210,23 +367,34 @@ if __name__=="__main__":
     from numpy.random import choice
     from pandas import read_pickle
     gtfs_path = "data/lm_daily.sqlite"
+    output_path = "results/shortest_path_inness"
     G = GTFS(gtfs_path)
     I = Inness(G)
     I.get_rings()
-    #rings = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24] #[10, 20, 30]
-    rings = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54]
     sample_size = 5
-    for ring_idx in rings:
-        ring = I.rings[ring_idx]
-        try:
-            ring_sample = read_pickle('results_old/{}_sample_{}_sample_stops.p'.format(ring_idx, sample_size))
-        except:
-            ring_sample = get_stops_sample(ring.copy(), sample_size, I)
-        ring_id = "{}_sample_{}".format(str(ring_idx), str(sample_size))
-        full_path = os.path.join(results_path, ring_id)
-        with  open(full_path + "_sample_stops.p", "wb") as f:
-            pickle.dump(ring_sample, f)
-        if not os.path.exists(full_path):
-            os.makedirs(full_path)
-        compute_ring_inness(ring_sample, ring_id, I, ring.copy())
+    rings = range(1, 56)
+
+    start_time = G.get_suitable_date_for_daily_extract(ut=True) + 7 * 3600
+    end_time = G.get_suitable_date_for_daily_extract(ut=True) + 11 * 3600
+    connections = get_transit_connections(G, start_time, end_time)
+    walk_network = get_walk_network(G)
+
+    net = _get_connections_network(connections, walk_network, G)
+    JI = JourneyInness(None, None, None, None, None, G, get_inness=False)
+    compute_shortest_path_inness(net, JI, output_path, rings)
+
+    #for ring_idx in rings:
+    #    ring = I.rings[ring_idx]
+    #    try:
+    #        ring_sample = read_pickle('results_old/{}_sample_{}_sample_stops.p'.format(ring_idx, sample_size))
+    #    except:
+    #        ring_sample = get_stops_sample(ring.copy(), sample_size, I)
+    #    ring_id = "{}_sample_{}".format(str(ring_idx), str(sample_size))
+    #    full_path = os.path.join(results_path, ring_id)
+    #    with  open(full_path + "_sample_stops.p", "wb") as f:
+    #        pickle.dump(ring_sample, f)
+    #   if not os.path.exists(full_path):
+    #        os.makedirs(full_path)
+    #    compute_ring_inness(ring_sample, ring_id, I, ring.copy())
+
 
